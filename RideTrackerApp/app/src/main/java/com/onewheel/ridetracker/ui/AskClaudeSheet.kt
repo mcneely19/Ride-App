@@ -6,6 +6,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.onewheel.ridetracker.claude.ClaudeClient
 import com.onewheel.ridetracker.claude.ClaudeResult
@@ -77,6 +80,7 @@ fun AskClaudeSheet(
 @Composable
 private fun ApiKeyEntry(onSaved: (String) -> Unit) {
     var keyText by remember { mutableStateOf("") }
+    var keyVisible by remember { mutableStateOf(false) }
 
     Text(
         "This uses your own Anthropic API key, billed to your Anthropic Console account — separate " +
@@ -92,8 +96,18 @@ private fun ApiKeyEntry(onSaved: (String) -> Unit) {
         label = { Text("Anthropic API key") },
         placeholder = { Text("sk-ant-...") },
         singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+        // Plain text (not KeyboardType.Password) — some keyboards block long-press paste on
+        // password-flagged fields. We hide the value visually instead via visualTransformation.
+        visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+        trailingIcon = {
+            IconButton(onClick = { keyVisible = !keyVisible }) {
+                Icon(
+                    if (keyVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = if (keyVisible) "Hide key" else "Show key"
+                )
+            }
+        },
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(Modifier.height(8.dp))
