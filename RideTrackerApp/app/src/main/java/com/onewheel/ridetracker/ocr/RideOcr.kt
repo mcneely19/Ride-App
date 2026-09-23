@@ -26,7 +26,18 @@ data class OcrGuess(
 /**
  * Runs on-device text recognition (ML Kit's bundled Latin text model —
  * ships inside the app, no network call, works with the phone in
- * airplane mode) against a picked image and returns the raw text.
+ * airplane mode) against a picked image and returns reconstructed text,
+ * one visual row per line.
+ *
+ * ML Kit's own `visionText.text` is grouped by detected "block" in whatever
+ * order its layout heuristics settle on — for a two-column list (a label
+ * left, its value right, like "Average speed        11.4 mph") that can
+ * come back as every label in a block, then every value in a *separate*
+ * block, so the label and its value end up nowhere near each other in the
+ * text. To avoid that, this pulls every recognized line's bounding box and
+ * re-groups them into rows by vertical position instead, then joins each
+ * row's pieces left-to-right — which reflects what's actually on screen
+ * regardless of how ML Kit chose to group its blocks.
  */
 suspend fun recognizeText(context: Context, uri: Uri): String =
     suspendCancellableCoroutine { cont ->
@@ -34,12 +45,42 @@ suspend fun recognizeText(context: Context, uri: Uri): String =
             val image = InputImage.fromFilePath(context, uri)
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             recognizer.process(image)
-                .addOnSuccessListener { visionText -> cont.resume(visionText.text) }
+                .addOnSuccessListener { visionText -> cont.resume(reconstructRows(visionText)) }
                 .addOnFailureListener { e -> cont.resumeWithException(e) }
         } catch (e: Exception) {
             cont.resumeWithException(e)
         }
     }
+
+private data class OcrLine(val text: String, val left: Int, val centerY: Int, val height: Int)
+
+private fun reconstructRows(visionText: com.google.mlkit.vision.text.Text): String {
+    val lines = mutableListOf<OcrLine>()
+    for (block in visionText.textBlocks) {
+        for (line in block.lines) {
+            val box = line.boundingBox ?: continue
+            lines.add(OcrLine(line.text, box.left, (box.top + box.bottom) / 2, box.bottom - box.top))
+        }
+    }
+    if (lines.isEmpty()) return visionText.text // fall back to whatever ML Kit gave us
+
+    val avgHeight = lines.map { it.height }.average().takeIf { it > 0 } ?: 20.0
+    val rowTolerance = (avgHeight * 0.6).toInt().coerceAtLeast(4)
+
+    val sorted = lines.sortedBy { it.centerY }
+    val rows = mutableListOf<MutableList<OcrLine>>()
+    for (line in sorted) {
+        val currentRow = rows.lastOrNull()
+        val rowCenterY = currentRow?.let { row -> row.sumOf { it.centerY } / row.size }
+        if (currentRow != null && rowCenterY != null && kotlin.math.abs(line.centerY - rowCenterY) <= rowTolerance) {
+            currentRow.add(line)
+        } else {
+            rows.add(mutableListOf(line))
+        }
+    }
+
+    return rows.joinToString("\n") { row -> row.sortedBy { it.left }.joinToString(" ") { it.text } }
+}
 
 /**
  * Heuristic parser: looks for common phrasings ride-tracking apps use
