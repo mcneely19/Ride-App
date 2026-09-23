@@ -13,12 +13,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.onewheel.ridetracker.claude.ClaudeClient
 import com.onewheel.ridetracker.claude.ClaudeResult
 import com.onewheel.ridetracker.claude.ClaudeSettings
@@ -29,6 +34,40 @@ import com.onewheel.ridetracker.ui.theme.LocalRideColors
 import kotlinx.coroutines.launch
 
 private data class ChatTurn(val question: String, val answer: String?, val error: String? = null)
+
+/**
+ * Very small markdown renderer — just enough for what Claude's replies actually use:
+ * `#`..`######` headers and `**bold**` inline spans. Anything else (lists, etc.) is left
+ * as plain text, which reads fine since the markers ("- ", "1. ") are already readable.
+ */
+private fun renderMarkdown(raw: String): AnnotatedString = buildAnnotatedString {
+    val headerRegex = Regex("^(#{1,6})\\s+(.*)")
+    val lines = raw.split("\n")
+    lines.forEachIndexed { i, line ->
+        val header = headerRegex.find(line)
+        if (header != null) {
+            val level = header.groupValues[1].length
+            val fontSize = when (level) { 1 -> 17.sp; 2 -> 16.sp; else -> 15.sp }
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = fontSize)) {
+                appendMarkdownInline(header.groupValues[2])
+            }
+        } else {
+            appendMarkdownInline(line)
+        }
+        if (i != lines.lastIndex) append("\n")
+    }
+}
+
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendMarkdownInline(text: String) {
+    val boldRegex = Regex("\\*\\*(.+?)\\*\\*")
+    var idx = 0
+    for (m in boldRegex.findAll(text)) {
+        if (m.range.first > idx) append(text.substring(idx, m.range.first))
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(m.groupValues[1]) }
+        idx = m.range.last + 1
+    }
+    if (idx < text.length) append(text.substring(idx))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +118,7 @@ fun AskClaudeSheet(
 
 @Composable
 private fun ApiKeyEntry(onSaved: (String) -> Unit) {
+    val colors = LocalRideColors.current
     var keyText by remember { mutableStateOf("") }
     var keyVisible by remember { mutableStateOf(false) }
 
@@ -108,6 +148,17 @@ private fun ApiKeyEntry(onSaved: (String) -> Unit) {
                 )
             }
         },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = colors.text,
+            unfocusedTextColor = colors.text,
+            cursorColor = colors.text,
+            focusedBorderColor = colors.text,
+            unfocusedBorderColor = colors.border,
+            focusedLabelColor = colors.text,
+            unfocusedLabelColor = colors.textMuted,
+            focusedPlaceholderColor = colors.textFaint,
+            unfocusedPlaceholderColor = colors.textFaint
+        ),
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(Modifier.height(8.dp))
@@ -134,6 +185,7 @@ private fun ChatArea(
     scope: kotlinx.coroutines.CoroutineScope,
     onClearKey: () -> Unit
 ) {
+    val colors = LocalRideColors.current
     val turns = remember { mutableStateListOf<ChatTurn>() }
     // Raw (role, text) history actually sent to the API — first user turn carries the full
     // ride/board data dump, follow-ups are just the plain question, since the API is stateless
@@ -211,7 +263,7 @@ private fun ChatArea(
                     modifier = Modifier.padding(vertical = 6.dp)
                 )
                 when {
-                    turn.answer != null -> Text(turn.answer, style = MaterialTheme.typography.bodyMedium)
+                    turn.answer != null -> Text(renderMarkdown(turn.answer), style = MaterialTheme.typography.bodyMedium)
                     turn.error != null -> Text(
                         "Error: ${turn.error}",
                         style = MaterialTheme.typography.bodyMedium,
@@ -242,6 +294,18 @@ private fun ChatArea(
                 val q = question; question = ""; send(q)
             }),
             enabled = !sending,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = colors.text,
+                unfocusedTextColor = colors.text,
+                disabledTextColor = colors.textFaint,
+                cursorColor = colors.text,
+                focusedBorderColor = colors.text,
+                unfocusedBorderColor = colors.border,
+                focusedLabelColor = colors.text,
+                unfocusedLabelColor = colors.textMuted,
+                focusedPlaceholderColor = colors.textFaint,
+                unfocusedPlaceholderColor = colors.textFaint
+            ),
             modifier = Modifier.weight(1f)
         )
         Spacer(Modifier.width(8.dp))
