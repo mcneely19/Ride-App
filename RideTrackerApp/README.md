@@ -7,6 +7,8 @@ A native Android port of your Onewheel VESC ride tracker — same 39-ride datase
 - **Jetpack Compose** UI, Material 3, matching the web tracker's palette (teal for XRV, burnt orange for X7) and light/dark theming
 - **Room database** seeded on first launch with all 39 rides (identical to the web version, including the Sep 7 XRV ride)
 - Board filter chips, trendline toggle, stat tiles, two Canvas-drawn scatter charts with least-squares trendlines, a scrollable ride log, and an "Add ride" bottom sheet that computes Wh/mi and estimated range live
+- **📷 From screenshot** — pick a photo of a ride summary and the app runs on-device OCR (Google ML Kit's bundled text model — no network call, works in airplane mode) to guess the numbers and pre-fill the Add Ride form. OCR is never perfect, so it always opens as an editable form for you to check before saving, never a silent auto-save.
+- **📄 Import JSON** — pick a `.json` file of ride records and bulk-import them straight into the local database. Re-importing the same file is safe: entries with an id that's already in the database are skipped, not overwritten.
 
 ## How to build it
 

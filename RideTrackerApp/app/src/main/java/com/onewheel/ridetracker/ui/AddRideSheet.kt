@@ -9,22 +9,27 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.onewheel.ridetracker.NewRideInput
 import com.onewheel.ridetracker.data.Board
+import com.onewheel.ridetracker.ocr.OcrGuess
 import com.onewheel.ridetracker.ui.theme.LocalRideColors
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddRideSheet(onDismiss: () -> Unit, onSave: (NewRideInput) -> Unit) {
+fun AddRideSheet(
+    onDismiss: () -> Unit,
+    onSave: (NewRideInput) -> Unit,
+    prefill: OcrGuess? = null
+) {
     val colors = LocalRideColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var board by remember { mutableStateOf(Board.XRV) }
+    var board by remember { mutableStateOf(prefill?.board?.let { Board.valueOf(it) } ?: Board.XRV) }
     var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())) }
-    var wh by remember { mutableStateOf("") }
-    var miles by remember { mutableStateOf("") }
-    var avg by remember { mutableStateOf("") }
-    var max by remember { mutableStateOf("") }
+    var wh by remember { mutableStateOf(prefill?.whUsed?.toString() ?: "") }
+    var miles by remember { mutableStateOf(prefill?.miles?.toString() ?: "") }
+    var avg by remember { mutableStateOf(prefill?.avgSpeed?.toString() ?: "") }
+    var max by remember { mutableStateOf(prefill?.maxSpeed?.toString() ?: "") }
     var temp by remember { mutableStateOf("") }
     var psi by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
@@ -48,6 +53,15 @@ fun AddRideSheet(onDismiss: () -> Unit, onSave: (NewRideInput) -> Unit) {
                 style = MaterialTheme.typography.bodySmall, color = colors.textMuted
             )
             Spacer(Modifier.height(16.dp))
+
+            if (prefill != null) {
+                Text(
+                    "Guessed from your screenshot — double-check every field before saving; OCR can misread digits.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.accentXrv
+                )
+                Spacer(Modifier.height(14.dp))
+            }
 
             Text("Board", style = MaterialTheme.typography.labelSmall, color = colors.textFaint)
             Spacer(Modifier.height(6.dp))

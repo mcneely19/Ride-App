@@ -14,5 +14,12 @@ class RideRepository(private val dao: RideDao) {
 
     suspend fun addRide(ride: Ride) = dao.insert(ride)
 
+    /** Returns the number of rides actually inserted (duplicates by id are skipped, not overwritten). */
+    suspend fun importRides(rides: List<Ride>): Int {
+        if (rides.isEmpty()) return 0
+        val rowIds = dao.insertAllIgnoreConflict(rides)
+        return rowIds.count { it != -1L }
+    }
+
     suspend fun deleteRide(id: String) = dao.deleteById(id)
 }

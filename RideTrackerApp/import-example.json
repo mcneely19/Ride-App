@@ -1,0 +1,28 @@
+{
+  "rides": [
+    {
+      "board": "XRV",
+      "date": "2026-09-20",
+      "session": "AM",
+      "whUsed": 260.0,
+      "miles": 12.4,
+      "avgSpeed": 13.6,
+      "maxSpeed": 22.0,
+      "temp": 74,
+      "psi": null,
+      "notes": "Example ride — required fields: board, date, whUsed, miles, avgSpeed, maxSpeed"
+    },
+    {
+      "board": "X7",
+      "date": "2026-09-21",
+      "session": "PM",
+      "whUsed": 310.0,
+      "miles": 11.0,
+      "avgSpeed": 16.2,
+      "maxSpeed": 27.5,
+      "temp": 68,
+      "psi": 15.0,
+      "notes": "session, temp, psi, notes, and id are all optional"
+    }
+  ]
+}

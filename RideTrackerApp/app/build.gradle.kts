@@ -66,5 +66,8 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
+    // On-device OCR for "import from screenshot" (no network calls, model ships with the app)
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

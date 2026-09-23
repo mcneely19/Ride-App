@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.onewheel.ridetracker.data.Ride
 import com.onewheel.ridetracker.data.RideDatabase
+import com.onewheel.ridetracker.data.RideJsonImport
 import com.onewheel.ridetracker.data.RideRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -31,6 +32,12 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _showTrendlines = MutableStateFlow(true)
     val showTrendlines: StateFlow<Boolean> = _showTrendlines.asStateFlow()
+
+    // One-shot status message for the last JSON import attempt (success/failure summary).
+    private val _importMessage = MutableStateFlow<String?>(null)
+    val importMessage: StateFlow<String?> = _importMessage.asStateFlow()
+
+    fun clearImportMessage() { _importMessage.value = null }
 
     val allRides: StateFlow<List<Ride>> = repo.rides
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -69,5 +76,34 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteRide(id: String) {
         viewModelScope.launch { repo.deleteRide(id) }
+    }
+
+    /** Parses a JSON file's text and imports whatever valid ride records it contains. */
+    fun importRidesFromJson(jsonText: String) {
+        viewModelScope.launch {
+            val (rides, errors) = try {
+                RideJsonImport.parse(jsonText)
+            } catch (e: Exception) {
+                _importMessage.value = "Couldn't read that file: ${e.message ?: "invalid JSON"}"
+                return@launch
+            }
+
+            if (rides.isEmpty()) {
+                _importMessage.value = if (errors.isNotEmpty()) {
+                    "No valid rides found. ${errors.first()}"
+                } else {
+                    "No rides found in that file."
+                }
+                return@launch
+            }
+
+            val inserted = repo.importRides(rides)
+            val skipped = rides.size - inserted
+            _importMessage.value = buildString {
+                append("Imported $inserted ride${if (inserted == 1) "" else "s"}.")
+                if (skipped > 0) append(" Skipped $skipped already-imported.")
+                if (errors.isNotEmpty()) append(" ${errors.size} entr${if (errors.size == 1) "y" else "ies"} couldn't be read.")
+            }
+        }
     }
 }

@@ -1,5 +1,11 @@
 package com.onewheel.ridetracker.ui
 
+import android.content.Context
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,21 +17,70 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.onewheel.ridetracker.RideViewModel
 import com.onewheel.ridetracker.data.Board
+import com.onewheel.ridetracker.ocr.OcrGuess
+import com.onewheel.ridetracker.ocr.RideTextParser
+import com.onewheel.ridetracker.ocr.recognizeText
 import com.onewheel.ridetracker.ui.theme.LocalRideColors
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(vm: RideViewModel = viewModel()) {
     val colors = LocalRideColors.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val allRides by vm.allRides.collectAsState()
     val visibleRides by vm.visibleRides.collectAsState()
     val boardFilter by vm.boardFilter.collectAsState()
     val showTrendlines by vm.showTrendlines.collectAsState()
+    val importMessage by vm.importMessage.collectAsState()
     var showAddSheet by remember { mutableStateOf(false) }
+    var ocrPrefill by remember { mutableStateOf<OcrGuess?>(null) }
+    var scanning by remember { mutableStateOf(false) }
+
+    LaunchedEffect(importMessage) {
+        importMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            vm.clearImportMessage()
+        }
+    }
+
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scanning = true
+        scope.launch {
+            try {
+                val text = recognizeText(context, uri)
+                ocrPrefill = RideTextParser.parse(text)
+                showAddSheet = true
+            } catch (e: Exception) {
+                Toast.makeText(context, "Couldn't read that screenshot: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                scanning = false
+            }
+        }
+    }
+
+    val jsonPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                val text = readTextFromUri(context, uri)
+                vm.importRidesFromJson(text)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Couldn't open that file: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     Column(
         Modifier
@@ -68,7 +123,26 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             FilterChip(if (showTrendlines) "Trendlines: on" else "Trendlines: off", selected = false) { vm.toggleTrendlines() }
-            Button(onClick = { showAddSheet = true }) { Text("+ Log a ride") }
+            Button(onClick = { ocrPrefill = null; showAddSheet = true }) { Text("+ Log a ride") }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+                enabled = !scanning,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(if (scanning) "Scanning…" else "📷 From screenshot")
+            }
+            OutlinedButton(
+                onClick = { jsonPicker.launch("application/json") },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("📄 Import JSON")
+            }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -147,11 +221,16 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
 
     if (showAddSheet) {
         AddRideSheet(
-            onDismiss = { showAddSheet = false },
-            onSave = { input -> vm.addRide(input); showAddSheet = false }
+            onDismiss = { showAddSheet = false; ocrPrefill = null },
+            onSave = { input -> vm.addRide(input); showAddSheet = false; ocrPrefill = null },
+            prefill = ocrPrefill
         )
     }
 }
+
+private suspend fun readTextFromUri(context: Context, uri: Uri): String =
+    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        ?: throw IllegalStateException("Could not open that file.")
 
 @Composable
 private fun ChartCard(
