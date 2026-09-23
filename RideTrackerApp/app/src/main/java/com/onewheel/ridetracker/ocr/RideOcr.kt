@@ -53,6 +53,8 @@ object RideTextParser {
 
     fun parse(text: String): OcrGuess {
         val lower = text.lowercase()
+        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val numberRegex = Regex("""([\d,]+\.?\d*)""")
 
         fun firstMatch(vararg patterns: Regex): Double? {
             for (p in patterns) {
@@ -63,27 +65,61 @@ object RideTextParser {
             return null
         }
 
+        // Label and value often land on separate OCR lines (a stat-tile layout: label on one
+        // line, "13.5 mph" on the next, or vice versa) rather than "label: value" on one line,
+        // so this checks the label's own line first, then the line after, then the line before.
+        fun numberNearLabel(labelPattern: Regex): Double? {
+            for (i in lines.indices) {
+                if (!labelPattern.containsMatchIn(lines[i])) continue
+                val sameLineRemainder = labelPattern.replace(lines[i], " ")
+                numberRegex.find(sameLineRemainder)?.let { m ->
+                    m.groupValues[1].replace(",", "").toDoubleOrNull()?.let { return it }
+                }
+                if (i + 1 < lines.size) {
+                    numberRegex.find(lines[i + 1])?.let { m ->
+                        m.groupValues[1].replace(",", "").toDoubleOrNull()?.let { return it }
+                    }
+                }
+                if (i - 1 >= 0) {
+                    numberRegex.find(lines[i - 1])?.let { m ->
+                        m.groupValues[1].replace(",", "").toDoubleOrNull()?.let { return it }
+                    }
+                }
+            }
+            return null
+        }
+
         val wh = firstMatch(
             Regex("""wh\s*used[:\s]*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
             Regex("""energy[:\s]*([\d,]+\.?\d*)\s*wh""", RegexOption.IGNORE_CASE),
             Regex("""([\d,]+\.?\d*)\s*wh\b""", RegexOption.IGNORE_CASE)
-        )
+        ) ?: numberNearLabel(Regex("""wh\s*used|energy\s*used""", RegexOption.IGNORE_CASE))
 
         val miles = firstMatch(
             Regex("""distance[:\s]*([\d,]+\.?\d*)\s*mi""", RegexOption.IGNORE_CASE),
             Regex("""([\d,]+\.?\d*)\s*mi(?:les)?\b""", RegexOption.IGNORE_CASE)
-        )
+        ) ?: numberNearLabel(Regex("""distance""", RegexOption.IGNORE_CASE))
 
-        val avg = firstMatch(
-            Regex("""avg\.?\s*(?:speed)?[:\s]*([\d,]+\.?\d*)\s*mph""", RegexOption.IGNORE_CASE),
-            Regex("""average\s*speed[:\s]*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
-            Regex("""([\d,]+\.?\d*)\s*mph\s*avg""", RegexOption.IGNORE_CASE)
-        )
+        val avg = numberNearLabel(Regex("""avg\.?\s*speed|average\s*speed""", RegexOption.IGNORE_CASE))
+            ?: firstMatch(
+                Regex("""avg\.?\s*speed[:\s]*([\d,]+\.?\d*)\s*mph""", RegexOption.IGNORE_CASE),
+                Regex("""average\s*speed[:\s]*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
+                Regex("""([\d,]+\.?\d*)\s*mph\s*avg""", RegexOption.IGNORE_CASE)
+            )
 
-        val max = firstMatch(
-            Regex("""(?:max|top)\.?\s*(?:speed)?[:\s]*([\d,]+\.?\d*)\s*mph""", RegexOption.IGNORE_CASE),
-            Regex("""([\d,]+\.?\d*)\s*mph\s*(?:max|top)""", RegexOption.IGNORE_CASE)
-        )
+        // Some apps (Floaty, for one) show several different "speed" stats in one screenshot —
+        // a plain "Max speed" summary plus separate "Max controller speed" / "Max gps speed"
+        // rows. The label-anchored search below only matches "max"/"top" immediately followed
+        // by "speed" (no word in between), so it already skips the controller/gps variants —
+        // but it has to run *before* the loose "number-then-mph-then-max-appears-nearby"
+        // fallback, or that looser pattern can grab a neighboring row's number by accident.
+        val max = numberNearLabel(Regex("""max\.?\s*speed|top\s*speed""", RegexOption.IGNORE_CASE))
+            ?: numberNearLabel(Regex("""gps\s*speed""", RegexOption.IGNORE_CASE))
+            ?: firstMatch(
+                Regex("""(?:max|top)\.?\s*speed[:\s]*([\d,]+\.?\d*)\s*mph""", RegexOption.IGNORE_CASE),
+                Regex("""([\d,]+\.?\d*)\s*mph\s*(?:max|top)""", RegexOption.IGNORE_CASE)
+            )
+            ?: numberNearLabel(Regex("""controller\s*speed""", RegexOption.IGNORE_CASE))
 
         val board = when {
             lower.contains("xrv") -> "XRV"
