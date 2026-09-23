@@ -92,7 +92,13 @@ private fun reconstructRows(visionText: com.google.mlkit.vision.text.Text): Stri
  */
 object RideTextParser {
 
-    fun parse(text: String): OcrGuess {
+    fun parse(rawInput: String): OcrGuess {
+        // OCR engines sometimes emit non-breaking spaces or other unicode whitespace
+        // between words (invisible in a screenshot, but \s in a regex only matches plain
+        // ASCII whitespace) — normalize everything to a regular space first so a label
+        // like "Average speed" always matches regardless of which exact character ML Kit
+        // used between the words.
+        val text = rawInput.replace(Regex("""[  -​  　\t]"""), " ")
         val lower = text.lowercase()
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val numberRegex = Regex("""([\d,]+\.?\d*)""")
@@ -149,13 +155,15 @@ object RideTextParser {
             )
 
         // Some apps (Floaty, for one) show several different "speed" stats in one screenshot —
-        // a plain "Max speed" summary plus separate "Max controller speed" / "Max gps speed"
-        // rows. The label-anchored search below only matches "max"/"top" immediately followed
-        // by "speed" (no word in between), so it already skips the controller/gps variants —
-        // but it has to run *before* the loose "number-then-mph-then-max-appears-nearby"
-        // fallback, or that looser pattern can grab a neighboring row's number by accident.
-        val max = numberNearLabel(Regex("""max\.?\s*speed|top\s*speed""", RegexOption.IGNORE_CASE))
-            ?: numberNearLabel(Regex("""gps\s*speed""", RegexOption.IGNORE_CASE))
+        // a plain "Max speed" summary tile plus separate "Max controller speed" / "Max gps
+        // speed" detail rows. "Max gps speed" is tried first because it's an unambiguous
+        // single-row match ("label ... value" on one line); the top summary tile is often a
+        // compound line like "Distance Duration Max speed" sitting above a compound value line
+        // like "6.1mi 60min 20.3 mph", where three different labels share one line — grabbing
+        // "the number on the line above" for a compound row like that could land on the wrong
+        // one of the three, so it's kept as a lower-priority fallback rather than tried first.
+        val max = numberNearLabel(Regex("""gps\s*speed""", RegexOption.IGNORE_CASE))
+            ?: numberNearLabel(Regex("""max\.?\s*speed|top\s*speed""", RegexOption.IGNORE_CASE))
             ?: firstMatch(
                 Regex("""(?:max|top)\.?\s*speed[:\s]*([\d,]+\.?\d*)\s*mph""", RegexOption.IGNORE_CASE),
                 Regex("""([\d,]+\.?\d*)\s*mph\s*(?:max|top)""", RegexOption.IGNORE_CASE)
