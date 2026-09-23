@@ -1,6 +1,8 @@
 package com.onewheel.ridetracker.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -66,6 +68,22 @@ fun AddRideSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.accentXrv
                 )
+                Spacer(Modifier.height(6.dp))
+                var showRawText by remember { mutableStateOf(false) }
+                TextButton(onClick = { showRawText = !showRawText }) {
+                    Text(if (showRawText) "Hide what OCR read" else "Show what OCR read")
+                }
+                if (showRawText) {
+                    Text(
+                        prefill.rawText.ifBlank { "(nothing recognized)" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface2, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    )
+                }
                 Spacer(Modifier.height(14.dp))
             }
 
