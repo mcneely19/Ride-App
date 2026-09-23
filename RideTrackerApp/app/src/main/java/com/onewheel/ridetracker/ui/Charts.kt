@@ -39,10 +39,23 @@ fun EfficiencyScatterChart(
     Canvas(modifier = modifier.fillMaxWidth().height(220.dp)) {
         val padL = 34.dp.toPx()
         val padR = 10.dp.toPx()
-        val padT = 8.dp.toPx()
+        val padT = 20.dp.toPx() // extra headroom for the "Wh/mi" axis label
         val padB = 26.dp.toPx()
         val plotW = size.width - padL - padR
         val plotH = size.height - padT - padB
+
+        // Y-axis unit — drawn once, top-left, rather than repeated on every gridline.
+        drawContext.canvas.nativeCanvas.drawText(
+            "Wh/mi",
+            padL,
+            12.dp.toPx(),
+            android.graphics.Paint().apply {
+                color = colors.textFaint.toArgbInt()
+                textSize = 9.sp.toPx()
+                textAlign = android.graphics.Paint.Align.LEFT
+                isAntiAlias = true
+            }
+        )
 
         if (rides.isEmpty()) return@Canvas
 
@@ -79,7 +92,7 @@ fun EfficiencyScatterChart(
                 Offset(px(t), padT), Offset(px(t), size.height - padB), strokeWidth = 1f
             )
             drawContext.canvas.nativeCanvas.drawText(
-                t.toInt().toString(),
+                "${t.toInt()}$xUnitLabel",
                 px(t),
                 size.height - padB + 16.dp.toPx(),
                 android.graphics.Paint().apply {

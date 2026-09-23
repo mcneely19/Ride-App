@@ -48,6 +48,7 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
     val boardsLoaded by vm.boardsLoaded.collectAsState()
     var showAddSheet by remember { mutableStateOf(false) }
     var showManageBoards by remember { mutableStateOf(false) }
+    var showAskClaude by remember { mutableStateOf(false) }
     var ocrPrefill by remember { mutableStateOf<OcrGuess?>(null) }
     var scanning by remember { mutableStateOf(false) }
 
@@ -172,6 +173,13 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
                 Text("📄 Import JSON")
             }
         }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { showAskClaude = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("🤖 Ask Claude")
+        }
 
         Spacer(Modifier.height(16.dp))
         val totalMiles = visibleRides.sumOf { it.miles }
@@ -204,25 +212,27 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
         Spacer(Modifier.height(18.dp))
         ChartCard(
             title = "Speed Efficiency",
-            desc = "Efficiency (Wh/mi) vs. average speed — drag rises faster than speed.",
+            desc = "Efficiency (Wh/mi) vs. average speed (mph) — drag rises faster than speed.",
             rides = visibleRides,
             boards = boards,
             colorOf = ::colorFor,
             xOf = { it.avgSpeed },
             xDomain = 7.0..21.0,
             xTicks = listOf(8.0, 12.0, 16.0, 20.0),
+            xUnitLabel = " mph",
             showTrendlines = showTrendlines
         )
         Spacer(Modifier.height(12.dp))
         ChartCard(
             title = "Temperature Efficiency",
-            desc = "Efficiency (Wh/mi) vs. ambient temperature — cold air taxes range.",
+            desc = "Efficiency (Wh/mi) vs. ambient temperature (°F) — cold air taxes range.",
             rides = visibleRides,
             boards = boards,
             colorOf = ::colorFor,
             xOf = { it.temp?.toDouble() ?: 0.0 },
             xDomain = 35.0..90.0,
             xTicks = listOf(40.0, 55.0, 70.0, 85.0),
+            xUnitLabel = "°F",
             showTrendlines = showTrendlines
         )
 
@@ -263,6 +273,14 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
     if (showManageBoards) {
         ManageBoardsSheet(vm = vm, onDismiss = { showManageBoards = false })
     }
+
+    if (showAskClaude) {
+        AskClaudeSheet(
+            boards = boards,
+            rides = allRides,
+            onDismiss = { showAskClaude = false }
+        )
+    }
 }
 
 private suspend fun readTextFromUri(context: Context, uri: Uri): String =
@@ -279,6 +297,7 @@ private fun ChartCard(
     xOf: (com.onewheel.ridetracker.data.Ride) -> Double,
     xDomain: ClosedFloatingPointRange<Double>,
     xTicks: List<Double>,
+    xUnitLabel: String,
     showTrendlines: Boolean
 ) {
     val colors = LocalRideColors.current
@@ -304,7 +323,7 @@ private fun ChartCard(
         Spacer(Modifier.height(6.dp))
         EfficiencyScatterChart(
             rides = rides, xOf = xOf, xDomain = xDomain, xTicks = xTicks,
-            xUnitLabel = "", showTrendlines = showTrendlines, colorOf = colorOf
+            xUnitLabel = xUnitLabel, showTrendlines = showTrendlines, colorOf = colorOf
         )
     }
 }

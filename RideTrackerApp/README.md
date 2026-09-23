@@ -10,6 +10,12 @@ A native Android port of your Onewheel VESC ride tracker — same 39-ride datase
 - **📷 From screenshot** — pick a photo of a ride summary and the app runs on-device OCR (Google ML Kit's bundled text model — no network call, works in airplane mode) to guess the numbers and pre-fill the Add Ride form. OCR is never perfect, so it always opens as an editable form for you to check before saving, never a silent auto-save.
 - **📄 Import JSON** — pick a `.json` file of ride records and bulk-import them straight into the local database. Re-importing the same file is safe: entries with an id that's already in the database are skipped, not overwritten.
 - **⚙ Boards are fully user-managed** — no board is hardcoded. Tap "⚙ Boards" to add, edit, or delete a board (name, total battery Wh, an optional subtitle, and a color). A board can't be deleted while it still has rides logged against it. On a brand-new install with no boards yet, the app opens straight into a first-run setup screen instead of an empty dashboard — handy if you're setting this up for someone else's board rather than your own.
+- Both scatter charts now label their axes with units (mph / °F on the x-axis, Wh/mi on the y-axis).
+- **🤖 Ask Claude** — chat with Claude about your own ride data (trends, efficiency, whatever you ask). This is the only feature in the app that touches the network, and it's opt-in:
+  - The first time you tap it, you're asked for your own **Anthropic API key** (from [console.anthropic.com](https://console.anthropic.com) → API Keys — a separate account/billing from a claude.ai subscription). The key is saved only on your device (local `SharedPreferences`, unencrypted — fine for a personal phone) and is sent only to `api.anthropic.com` when you ask a question.
+  - Your question, plus your current boards and full ride log, are sent to the Claude API (model: `claude-sonnet-4-5`) so it can answer with real numbers. Follow-up questions in the same session carry the earlier conversation as context.
+  - "Change key" clears the stored key so you can swap in a different one.
+  - Everything else in the app — charts, ride log, OCR import, JSON import, board management — still works fully offline with no key required.
 
 ## How to build it
 
