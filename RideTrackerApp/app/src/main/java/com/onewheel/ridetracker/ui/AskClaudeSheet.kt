@@ -143,6 +143,10 @@ private fun ChatArea(
     var sending by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
+    LaunchedEffect(turns.size, turns.lastOrNull()?.answer, turns.lastOrNull()?.error) {
+        if (turns.isNotEmpty()) scrollState.animateScrollTo(scrollState.maxValue)
+    }
+
     fun send(q: String) {
         if (q.isBlank() || sending) return
         sending = true
@@ -232,6 +236,7 @@ private fun ChatArea(
             onValueChange = { question = it },
             label = { Text(if (turns.isEmpty()) "Ask a question" else "Ask a follow-up") },
             placeholder = { Text("e.g. Is my XRV efficiency getting worse in the cold?") },
+            singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
                 val q = question; question = ""; send(q)
