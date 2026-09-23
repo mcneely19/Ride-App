@@ -32,7 +32,9 @@ fun AddRideSheet(
             boards.find { it.name == prefill?.board } ?: boards.firstOrNull()
         )
     }
-    var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())) }
+    var date by remember {
+        mutableStateOf(prefill?.date ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
+    }
     var wh by remember { mutableStateOf(prefill?.whUsed?.toString() ?: "") }
     var miles by remember { mutableStateOf(prefill?.miles?.toString() ?: "") }
     var avg by remember { mutableStateOf(prefill?.avgSpeed?.toString() ?: "") }
@@ -64,25 +66,30 @@ fun AddRideSheet(
 
             if (prefill != null) {
                 Text(
-                    "Guessed from your screenshot — double-check every field before saving; OCR can misread digits.",
+                    if (prefill.exact)
+                        "Imported from Floaty's session log — Wh used, miles, and speeds are exact recorded values; just confirm the board and date."
+                    else
+                        "Guessed from your screenshot — double-check every field before saving; OCR can misread digits.",
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.accentXrv
                 )
-                Spacer(Modifier.height(6.dp))
-                var showRawText by remember { mutableStateOf(false) }
-                TextButton(onClick = { showRawText = !showRawText }) {
-                    Text(if (showRawText) "Hide what OCR read" else "Show what OCR read")
-                }
-                if (showRawText) {
-                    Text(
-                        prefill.rawText.ifBlank { "(nothing recognized)" },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textMuted,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(colors.surface2, RoundedCornerShape(8.dp))
-                            .padding(10.dp)
-                    )
+                if (!prefill.exact) {
+                    Spacer(Modifier.height(6.dp))
+                    var showRawText by remember { mutableStateOf(false) }
+                    TextButton(onClick = { showRawText = !showRawText }) {
+                        Text(if (showRawText) "Hide what OCR read" else "Show what OCR read")
+                    }
+                    if (showRawText) {
+                        Text(
+                            prefill.rawText.ifBlank { "(nothing recognized)" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textMuted,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(colors.surface2, RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        )
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
             }

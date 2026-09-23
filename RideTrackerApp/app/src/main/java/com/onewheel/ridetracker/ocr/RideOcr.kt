@@ -10,16 +10,19 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Best-guess ride numbers pulled from a screenshot. Anything the parser
- * couldn't find with confidence is left null so the "Log a ride" form
- * shows it blank rather than a wrong number.
+ * Best-guess ride numbers to pre-fill the "Log a ride" form with. Usually a guess pulled from
+ * a screenshot via OCR (anything the parser couldn't find with confidence is left null so the
+ * form shows it blank rather than a wrong number) — but the same shape is reused for a Floaty
+ * session import, where the numbers are exact rather than guessed ([exact] = true).
  */
 data class OcrGuess(
     val board: String? = null,
+    val date: String? = null,
     val whUsed: Double? = null,
     val miles: Double? = null,
     val avgSpeed: Double? = null,
     val maxSpeed: Double? = null,
+    val exact: Boolean = false,
     val rawText: String = ""
 )
 

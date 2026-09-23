@@ -27,12 +27,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.onewheel.ridetracker.RideViewModel
 import com.onewheel.ridetracker.data.BoardEntity
+import com.onewheel.ridetracker.data.FloatyBoardMap
+import com.onewheel.ridetracker.data.FloatyImport
 import com.onewheel.ridetracker.data.RideJsonExport
 import com.onewheel.ridetracker.ocr.OcrGuess
 import com.onewheel.ridetracker.ocr.RideTextParser
 import com.onewheel.ridetracker.ocr.recognizeText
 import com.onewheel.ridetracker.ui.theme.LocalRideColors
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 @Composable
 fun HomeScreen(vm: RideViewModel = viewModel()) {
@@ -52,6 +55,22 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
     var showAskClaude by remember { mutableStateOf(false) }
     var ocrPrefill by remember { mutableStateOf<OcrGuess?>(null) }
     var scanning by remember { mutableStateOf(false) }
+    var pendingFloatySession by remember { mutableStateOf<FloatyImport.ParsedSession?>(null) }
+
+    fun openPrefilledFrom(session: FloatyImport.ParsedSession, boardName: String) {
+        ocrPrefill = OcrGuess(
+            board = boardName,
+            date = session.date,
+            whUsed = session.whUsed,
+            miles = session.miles,
+            avgSpeed = session.avgSpeed,
+            maxSpeed = session.maxSpeed,
+            exact = true,
+            rawText = "Floaty session export — board ${session.boardId}, ${"%.0f".format(session.durationMinutes)} min ride."
+        )
+        showAddSheet = true
+        pendingFloatySession = null
+    }
 
     fun colorFor(boardName: String): Color =
         boards.find { it.name == boardName }?.let { parseHexColor(it.colorHex, colors.textFaint) } ?: colors.textFaint
@@ -101,7 +120,22 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
         scope.launch {
             try {
                 val text = readTextFromUri(context, uri)
-                vm.importRidesFromJson(text)
+                val trimmed = text.trim()
+                val looksLikeFloaty = trimmed.startsWith("{") &&
+                    runCatching { FloatyImport.looksLikeFloatySession(JSONObject(trimmed)) }.getOrDefault(false)
+
+                if (looksLikeFloaty) {
+                    val session = FloatyImport.parse(text)
+                    val mappedName = FloatyBoardMap.get(context, session.boardId)
+                    val mappedBoard = boards.find { it.name == mappedName }
+                    if (mappedBoard != null) {
+                        openPrefilledFrom(session, mappedBoard.name)
+                    } else {
+                        pendingFloatySession = session // ask which board this is, below
+                    }
+                } else {
+                    vm.importRidesFromJson(text)
+                }
             } catch (e: Exception) {
                 Toast.makeText(context, "Couldn't open that file: ${e.message}", Toast.LENGTH_LONG).show()
             }
@@ -186,7 +220,7 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
                 modifier = Modifier.weight(1f)
             ) {
                 Text("📄 Import JSON")
-            }
+            } // also accepts a Floaty "Export session" file directly
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -308,6 +342,62 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
             onDismiss = { showAskClaude = false }
         )
     }
+
+    pendingFloatySession?.let { session ->
+        FloatyBoardPickerDialog(
+            boards = boards,
+            boardId = session.boardId,
+            onPick = { board, remember ->
+                if (remember) FloatyBoardMap.set(context, session.boardId, board.name)
+                openPrefilledFrom(session, board.name)
+            },
+            onDismiss = { pendingFloatySession = null }
+        )
+    }
+}
+
+@Composable
+private fun FloatyBoardPickerDialog(
+    boards: List<BoardEntity>,
+    boardId: String,
+    onPick: (BoardEntity, remember: Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selected by remember { mutableStateOf(boards.firstOrNull()) }
+    var rememberChoice by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Which board is this?") },
+        text = {
+            Column {
+                Text(
+                    "This Floaty session was recorded on board \"$boardId\" — pick which of your boards that is.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    boards.forEach { b ->
+                        FilterChip(b.name, selected?.name == b.name) { selected = b }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(checked = rememberChoice, onCheckedChange = { rememberChoice = it })
+                    Text("Remember this for future Floaty imports", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { selected?.let { onPick(it, rememberChoice) } },
+                enabled = selected != null
+            ) { Text("Continue") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 private suspend fun readTextFromUri(context: Context, uri: Uri): String =
