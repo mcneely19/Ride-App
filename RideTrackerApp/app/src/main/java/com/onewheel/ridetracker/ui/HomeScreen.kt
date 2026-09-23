@@ -1,0 +1,193 @@
+package com.onewheel.ridetracker.ui
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.onewheel.ridetracker.RideViewModel
+import com.onewheel.ridetracker.data.Board
+import com.onewheel.ridetracker.ui.theme.LocalRideColors
+
+@Composable
+fun HomeScreen(vm: RideViewModel = viewModel()) {
+    val colors = LocalRideColors.current
+    val allRides by vm.allRides.collectAsState()
+    val visibleRides by vm.visibleRides.collectAsState()
+    val boardFilter by vm.boardFilter.collectAsState()
+    val showTrendlines by vm.showTrendlines.collectAsState()
+    var showAddSheet by remember { mutableStateOf(false) }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(colors.bg)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 20.dp)
+    ) {
+        Text("VESC BATTERY & RIDE LOG", style = MaterialTheme.typography.labelSmall, color = colors.textFaint)
+        Spacer(Modifier.height(4.dp))
+        Text("Ride Telemetry", style = MaterialTheme.typography.headlineSmall, color = colors.text)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Efficiency and range across every logged ride. Speed Efficiency tracks speed against consumption; Temperature Efficiency tracks ambient temperature against efficiency.",
+            style = MaterialTheme.typography.bodySmall, color = colors.textMuted
+        )
+
+        Spacer(Modifier.height(18.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BoardCard(Board.XRV, "Molicel P50B cells", Modifier.weight(1f))
+            BoardCard(Board.X7, "Fungineers Thor 400 · Superflux Mk3 · Refloat 1.3", Modifier.weight(1f))
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip("All rides", boardFilter == null) { vm.setBoardFilter(null) }
+                FilterChip("XRV", boardFilter == "XRV") { vm.setBoardFilter("XRV") }
+                FilterChip("X7", boardFilter == "X7") { vm.setBoardFilter("X7") }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(if (showTrendlines) "Trendlines: on" else "Trendlines: off", selected = false) { vm.toggleTrendlines() }
+            Button(onClick = { showAddSheet = true }) { Text("+ Log a ride") }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        val totalMiles = visibleRides.sumOf { it.miles }
+        val totalWh = visibleRides.sumOf { it.whUsed }
+        val avgWhMi = if (totalMiles > 0) totalWh / totalMiles else 0.0
+        val best = visibleRides.minByOrNull { it.whPerMi }
+        val mostRecent = visibleRides.firstOrNull()
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile("Rides logged", visibleRides.size.toString(), sub = "${"%.1f".format(totalMiles)} total miles", modifier = Modifier.weight(1f))
+            StatTile("Average efficiency", "%.1f".format(avgWhMi), sub = "Wh per mile", modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile(
+                "Best efficiency",
+                best?.let { "%.1f".format(it.whPerMi) } ?: "–",
+                unit = "Wh/mi",
+                sub = best?.let { "${it.board} · ${formatDate(it.date)}" } ?: "",
+                modifier = Modifier.weight(1f)
+            )
+            StatTile(
+                "Most recent",
+                mostRecent?.let { "%.1f mi".format(it.miles) } ?: "–",
+                sub = mostRecent?.let { "${it.board} · ${formatDate(it.date)}" } ?: "",
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(Modifier.height(18.dp))
+        ChartCard(
+            title = "Speed Efficiency",
+            desc = "Efficiency (Wh/mi) vs. average speed — drag rises faster than speed.",
+            rides = visibleRides,
+            xOf = { it.avgSpeed },
+            xDomain = 7.0..21.0,
+            xTicks = listOf(8.0, 12.0, 16.0, 20.0),
+            showTrendlines = showTrendlines
+        )
+        Spacer(Modifier.height(12.dp))
+        ChartCard(
+            title = "Temperature Efficiency",
+            desc = "Efficiency (Wh/mi) vs. ambient temperature — cold air taxes range.",
+            rides = visibleRides,
+            xOf = { it.temp?.toDouble() ?: 0.0 },
+            xDomain = 35.0..90.0,
+            xTicks = listOf(40.0, 55.0, 70.0, 85.0),
+            showTrendlines = showTrendlines
+        )
+
+        Spacer(Modifier.height(18.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
+            border = BorderStroke(1.dp, colors.border)
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Ride log", style = MaterialTheme.typography.titleMedium, color = colors.text)
+                    Text("${visibleRides.size} rides", fontSize = 11.sp, color = colors.textFaint)
+                }
+                Spacer(Modifier.height(6.dp))
+                visibleRides.forEachIndexed { index, ride ->
+                    RideRow(ride) { vm.deleteRide(ride.id) }
+                    if (index != visibleRides.lastIndex) {
+                        HorizontalDivider(color = colors.border)
+                    }
+                }
+                if (visibleRides.isEmpty()) {
+                    Text("No rides match this filter.", color = colors.textFaint, modifier = Modifier.padding(vertical = 16.dp))
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+
+    if (showAddSheet) {
+        AddRideSheet(
+            onDismiss = { showAddSheet = false },
+            onSave = { input -> vm.addRide(input); showAddSheet = false }
+        )
+    }
+}
+
+@Composable
+private fun ChartCard(
+    title: String,
+    desc: String,
+    rides: List<com.onewheel.ridetracker.data.Ride>,
+    xOf: (com.onewheel.ridetracker.data.Ride) -> Double,
+    xDomain: ClosedFloatingPointRange<Double>,
+    xTicks: List<Double>,
+    showTrendlines: Boolean
+) {
+    val colors = LocalRideColors.current
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.surface, shape = RoundedCornerShape(14.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(14.dp))
+            .padding(16.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = colors.text)
+        Spacer(Modifier.height(3.dp))
+        Text(desc, fontSize = 11.5.sp, color = colors.textMuted)
+        Spacer(Modifier.height(10.dp))
+        Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Dot(colors.accentXrv, 8.dp); Spacer(Modifier.width(4.dp)); Text("XRV", fontSize = 11.sp, color = colors.textMuted)
+            }
+            Spacer(Modifier.width(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Dot(colors.accentX7, 8.dp); Spacer(Modifier.width(4.dp)); Text("X7", fontSize = 11.sp, color = colors.textMuted)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        EfficiencyScatterChart(
+            rides = rides, xOf = xOf, xDomain = xDomain, xTicks = xTicks,
+            xUnitLabel = "", showTrendlines = showTrendlines
+        )
+    }
+}
