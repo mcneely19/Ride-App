@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.onewheel.ridetracker.data.Board
+import com.onewheel.ridetracker.data.BoardEntity
 import com.onewheel.ridetracker.data.Ride
 import com.onewheel.ridetracker.ui.theme.LocalRideColors
 import java.text.SimpleDateFormat
@@ -28,15 +28,19 @@ fun formatDate(iso: String): String = try {
     SimpleDateFormat("MMM d, yyyy", Locale.US).format(parsed!!)
 } catch (e: Exception) { iso }
 
+/** Parses a "#RRGGBB" string into a Compose Color, falling back to [fallback] if malformed. */
+fun parseHexColor(hex: String, fallback: Color = Color.Gray): Color = try {
+    Color(android.graphics.Color.parseColor(hex))
+} catch (e: Exception) { fallback }
+
 @Composable
 fun Dot(color: Color, size: androidx.compose.ui.unit.Dp = 9.dp) {
     Box(Modifier.size(size).clip(CircleShape).background(color))
 }
 
 @Composable
-fun BoardCard(board: Board, subtitle: String, modifier: Modifier = Modifier) {
+fun BoardCard(board: BoardEntity, accent: Color, modifier: Modifier = Modifier) {
     val colors = LocalRideColors.current
-    val accent = if (board == Board.XRV) colors.accentXrv else colors.accentX7
     Column(
         modifier
             .clip(RoundedCornerShape(14.dp))
@@ -47,10 +51,12 @@ fun BoardCard(board: Board, subtitle: String, modifier: Modifier = Modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Dot(accent)
             Spacer(Modifier.width(8.dp))
-            Text(board.label, style = MaterialTheme.typography.titleMedium, color = colors.text)
+            Text(board.name, style = MaterialTheme.typography.titleMedium, color = colors.text)
         }
-        Spacer(Modifier.height(5.dp))
-        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+        if (board.subtitle.isNotBlank()) {
+            Spacer(Modifier.height(5.dp))
+            Text(board.subtitle, style = MaterialTheme.typography.bodySmall, color = colors.textMuted)
+        }
         Spacer(Modifier.height(4.dp))
         Text("${board.capacityWh.toInt()} Wh pack", style = MaterialTheme.typography.labelSmall, color = colors.textFaint)
     }
@@ -99,9 +105,8 @@ fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun RideRow(ride: Ride, onDelete: () -> Unit) {
+fun RideRow(ride: Ride, accent: Color, onDelete: () -> Unit) {
     val colors = LocalRideColors.current
-    val accent = if (ride.board == "XRV") colors.accentXrv else colors.accentX7
     Row(
         Modifier
             .fillMaxWidth()

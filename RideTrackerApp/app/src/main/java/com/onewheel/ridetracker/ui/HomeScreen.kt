@@ -9,7 +9,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -17,12 +20,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.onewheel.ridetracker.RideViewModel
-import com.onewheel.ridetracker.data.Board
+import com.onewheel.ridetracker.data.BoardEntity
 import com.onewheel.ridetracker.ocr.OcrGuess
 import com.onewheel.ridetracker.ocr.RideTextParser
 import com.onewheel.ridetracker.ocr.recognizeText
@@ -39,15 +43,35 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
     val boardFilter by vm.boardFilter.collectAsState()
     val showTrendlines by vm.showTrendlines.collectAsState()
     val importMessage by vm.importMessage.collectAsState()
+    val boardMessage by vm.boardMessage.collectAsState()
+    val boards by vm.boards.collectAsState()
+    val boardsLoaded by vm.boardsLoaded.collectAsState()
     var showAddSheet by remember { mutableStateOf(false) }
+    var showManageBoards by remember { mutableStateOf(false) }
     var ocrPrefill by remember { mutableStateOf<OcrGuess?>(null) }
     var scanning by remember { mutableStateOf(false) }
+
+    fun colorFor(boardName: String): Color =
+        boards.find { it.name == boardName }?.let { parseHexColor(it.colorHex, colors.textFaint) } ?: colors.textFaint
 
     LaunchedEffect(importMessage) {
         importMessage?.let {
             Toast.makeText(context, it, Toast.LENGTH_LONG).show()
             vm.clearImportMessage()
         }
+    }
+
+    LaunchedEffect(boardMessage) {
+        boardMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            vm.clearBoardMessage()
+        }
+    }
+
+    // No boards set up yet — show the setup screen instead of the (empty) dashboard.
+    if (boardsLoaded && boards.isEmpty()) {
+        FirstRunSetupScreen(vm)
+        return
     }
 
     val photoPicker = rememberLauncherForActivityResult(
@@ -89,9 +113,14 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 20.dp)
     ) {
-        Text("VESC BATTERY & RIDE LOG", style = MaterialTheme.typography.labelSmall, color = colors.textFaint)
-        Spacer(Modifier.height(4.dp))
-        Text("Ride Telemetry", style = MaterialTheme.typography.headlineSmall, color = colors.text)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+            Column {
+                Text("VESC BATTERY & RIDE LOG", style = MaterialTheme.typography.labelSmall, color = colors.textFaint)
+                Spacer(Modifier.height(4.dp))
+                Text("Ride Telemetry", style = MaterialTheme.typography.headlineSmall, color = colors.text)
+            }
+            TextButton(onClick = { showManageBoards = true }) { Text("⚙ Boards") }
+        }
         Spacer(Modifier.height(6.dp))
         Text(
             "Efficiency and range across every logged ride. Speed Efficiency tracks speed against consumption; Temperature Efficiency tracks ambient temperature against efficiency.",
@@ -99,21 +128,20 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
         )
 
         Spacer(Modifier.height(18.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BoardCard(Board.XRV, "Molicel P50B cells", Modifier.weight(1f))
-            BoardCard(Board.X7, "Fungineers Thor 400 · Superflux Mk3 · Refloat 1.3", Modifier.weight(1f))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(boards) { b ->
+                BoardCard(b, parseHexColor(b.colorHex, colors.textFaint), Modifier.width(200.dp))
+            }
         }
 
         Spacer(Modifier.height(16.dp))
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip("All rides", boardFilter == null) { vm.setBoardFilter(null) }
-                FilterChip("XRV", boardFilter == "XRV") { vm.setBoardFilter("XRV") }
-                FilterChip("X7", boardFilter == "X7") { vm.setBoardFilter("X7") }
+            FilterChip("All rides", boardFilter == null) { vm.setBoardFilter(null) }
+            boards.forEach { b ->
+                FilterChip(b.name, boardFilter == b.name) { vm.setBoardFilter(b.name) }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -178,6 +206,8 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
             title = "Speed Efficiency",
             desc = "Efficiency (Wh/mi) vs. average speed — drag rises faster than speed.",
             rides = visibleRides,
+            boards = boards,
+            colorOf = ::colorFor,
             xOf = { it.avgSpeed },
             xDomain = 7.0..21.0,
             xTicks = listOf(8.0, 12.0, 16.0, 20.0),
@@ -188,6 +218,8 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
             title = "Temperature Efficiency",
             desc = "Efficiency (Wh/mi) vs. ambient temperature — cold air taxes range.",
             rides = visibleRides,
+            boards = boards,
+            colorOf = ::colorFor,
             xOf = { it.temp?.toDouble() ?: 0.0 },
             xDomain = 35.0..90.0,
             xTicks = listOf(40.0, 55.0, 70.0, 85.0),
@@ -206,7 +238,7 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
                 }
                 Spacer(Modifier.height(6.dp))
                 visibleRides.forEachIndexed { index, ride ->
-                    RideRow(ride) { vm.deleteRide(ride.id) }
+                    RideRow(ride, colorFor(ride.board)) { vm.deleteRide(ride.id) }
                     if (index != visibleRides.lastIndex) {
                         HorizontalDivider(color = colors.border)
                     }
@@ -221,10 +253,15 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
 
     if (showAddSheet) {
         AddRideSheet(
+            boards = boards,
             onDismiss = { showAddSheet = false; ocrPrefill = null },
             onSave = { input -> vm.addRide(input); showAddSheet = false; ocrPrefill = null },
             prefill = ocrPrefill
         )
+    }
+
+    if (showManageBoards) {
+        ManageBoardsSheet(vm = vm, onDismiss = { showManageBoards = false })
     }
 }
 
@@ -237,6 +274,8 @@ private fun ChartCard(
     title: String,
     desc: String,
     rides: List<com.onewheel.ridetracker.data.Ride>,
+    boards: List<BoardEntity>,
+    colorOf: (String) -> Color,
     xOf: (com.onewheel.ridetracker.data.Ride) -> Double,
     xDomain: ClosedFloatingPointRange<Double>,
     xTicks: List<Double>,
@@ -254,19 +293,18 @@ private fun ChartCard(
         Spacer(Modifier.height(3.dp))
         Text(desc, fontSize = 11.5.sp, color = colors.textMuted)
         Spacer(Modifier.height(10.dp))
-        Row {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Dot(colors.accentXrv, 8.dp); Spacer(Modifier.width(4.dp)); Text("XRV", fontSize = 11.sp, color = colors.textMuted)
-            }
-            Spacer(Modifier.width(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Dot(colors.accentX7, 8.dp); Spacer(Modifier.width(4.dp)); Text("X7", fontSize = 11.sp, color = colors.textMuted)
+        Row(Modifier.horizontalScroll(rememberScrollState())) {
+            boards.forEachIndexed { index, b ->
+                if (index > 0) Spacer(Modifier.width(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Dot(colorOf(b.name), 8.dp); Spacer(Modifier.width(4.dp)); Text(b.name, fontSize = 11.sp, color = colors.textMuted)
+                }
             }
         }
         Spacer(Modifier.height(6.dp))
         EfficiencyScatterChart(
             rides = rides, xOf = xOf, xDomain = xDomain, xTicks = xTicks,
-            xUnitLabel = "", showTrendlines = showTrendlines
+            xUnitLabel = "", showTrendlines = showTrendlines, colorOf = colorOf
         )
     }
 }

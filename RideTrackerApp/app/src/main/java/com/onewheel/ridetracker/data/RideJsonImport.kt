@@ -12,7 +12,7 @@ import java.util.UUID
  * still works). Each ride object looks like:
  *
  * {
- *   "board": "XRV",           // required — "XRV" or "X7"
+ *   "board": "XRV",           // required — must match a board name you've already set up
  *   "date": "2026-09-20",     // required — yyyy-MM-dd
  *   "whUsed": 250.0,          // required
  *   "miles": 12.0,            // required
@@ -27,8 +27,12 @@ import java.util.UUID
  */
 object RideJsonImport {
 
-    /** Returns the successfully parsed rides plus a human-readable note per skipped entry. */
-    fun parse(jsonText: String): Pair<List<Ride>, List<String>> {
+    /**
+     * Returns the successfully parsed rides plus a human-readable note per skipped entry.
+     * [boardCapacities] maps board name -> pack Wh, used both to validate the "board" field
+     * against boards you've actually set up and to compute pctUsed.
+     */
+    fun parse(jsonText: String, boardCapacities: Map<String, Double>): Pair<List<Ride>, List<String>> {
         val root = JSONObject(jsonText.trim().let { if (it.startsWith("[")) "{\"rides\":$it}" else it })
         val array: JSONArray = root.optJSONArray("rides")
             ?: throw IllegalArgumentException("Expected a JSON array of rides.")
@@ -43,7 +47,7 @@ object RideJsonImport {
                 continue
             }
             try {
-                rides.add(parseOne(obj))
+                rides.add(parseOne(obj, boardCapacities))
             } catch (e: Exception) {
                 errors.add("Entry ${i + 1}: ${e.message}")
             }
@@ -52,9 +56,12 @@ object RideJsonImport {
         return rides to errors
     }
 
-    private fun parseOne(obj: JSONObject): Ride {
+    private fun parseOne(obj: JSONObject, boardCapacities: Map<String, Double>): Ride {
         val board = obj.optString("board", "").uppercase()
-        require(board == "XRV" || board == "X7") { "board must be \"XRV\" or \"X7\"" }
+        val capacity = boardCapacities[board]
+        requireNotNull(capacity) {
+            "unknown board \"$board\" — set it up in Manage Boards first (known boards: ${boardCapacities.keys.joinToString()})"
+        }
 
         val date = obj.optString("date", "")
         require(Regex("""\d{4}-\d{2}-\d{2}""").matches(date)) { "date must be yyyy-MM-dd" }
@@ -66,7 +73,6 @@ object RideJsonImport {
 
         val whUsed = obj.getDouble("whUsed")
         val miles = obj.getDouble("miles")
-        val capacity = Board.valueOf(board).capacityWh
         val pctUsed = whUsed / capacity * 100
 
         val id = obj.optString("id", "").ifBlank {

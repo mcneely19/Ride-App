@@ -4,11 +4,12 @@ A native Android port of your Onewheel VESC ride tracker — same 39-ride datase
 
 ## What's inside
 
-- **Jetpack Compose** UI, Material 3, matching the web tracker's palette (teal for XRV, burnt orange for X7) and light/dark theming
-- **Room database** seeded on first launch with all 39 rides (identical to the web version, including the Sep 7 XRV ride)
+- **Jetpack Compose** UI, Material 3, light/dark theming
+- **Room database** stores rides and boards locally — fully offline, nothing leaves the device
 - Board filter chips, trendline toggle, stat tiles, two Canvas-drawn scatter charts with least-squares trendlines, a scrollable ride log, and an "Add ride" bottom sheet that computes Wh/mi and estimated range live
 - **📷 From screenshot** — pick a photo of a ride summary and the app runs on-device OCR (Google ML Kit's bundled text model — no network call, works in airplane mode) to guess the numbers and pre-fill the Add Ride form. OCR is never perfect, so it always opens as an editable form for you to check before saving, never a silent auto-save.
 - **📄 Import JSON** — pick a `.json` file of ride records and bulk-import them straight into the local database. Re-importing the same file is safe: entries with an id that's already in the database are skipped, not overwritten.
+- **⚙ Boards are fully user-managed** — no board is hardcoded. Tap "⚙ Boards" to add, edit, or delete a board (name, total battery Wh, an optional subtitle, and a color). A board can't be deleted while it still has rides logged against it. On a brand-new install with no boards yet, the app opens straight into a first-run setup screen instead of an empty dashboard — handy if you're setting this up for someone else's board rather than your own.
 
 ## How to build it
 
@@ -23,5 +24,5 @@ No signing setup is needed for a debug build — Run installs it straight to you
 
 - Minimum Android version: Android 8.0 (API 26).
 - The app icon uses a placeholder system icon — swap in a real one later via **Image Asset Studio** (right-click `res` → New → Image Asset) if you want a custom one.
-- The two boards and their pack sizes (XRV 648 Wh, X7 518 Wh) are defined in `data/Ride.kt` — GT-S isn't included, matching the current web tracker.
-- To keep this in sync with future rides, tell me about them the same way you have been — I'll add them to `data/SeedData.kt` and send you an updated project (or, if you'd rather, add an "export/import" flow so you can move data between the phone and me directly; just ask).
+- **Upgrading from an earlier build that had hardcoded XRV/X7 boards:** your existing rides are untouched — the database migration adds the boards table and auto-fills XRV (648 Wh) and X7 (518 Wh) as real, editable board entries so nothing breaks. You can rename their subtitle/color or add more boards from "⚙ Boards" right away.
+- A board's **name can't be changed** once it has rides logged against it (the name is how rides reference it) — subtitle and color can always be edited, and you can delete a board once it has no rides left.

@@ -30,10 +30,11 @@ fun EfficiencyScatterChart(
     xTicks: List<Double>,
     xUnitLabel: String,
     showTrendlines: Boolean,
+    colorOf: (String) -> Color,
     modifier: Modifier = Modifier
 ) {
     val colors = LocalRideColors.current
-    val accentColor = { board: String -> if (board == "XRV") colors.accentXrv else colors.accentX7 }
+    val accentColor = colorOf
 
     Canvas(modifier = modifier.fillMaxWidth().height(220.dp)) {
         val padL = 34.dp.toPx()

@@ -8,7 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.onewheel.ridetracker.NewRideInput
-import com.onewheel.ridetracker.data.Board
+import com.onewheel.ridetracker.data.BoardEntity
 import com.onewheel.ridetracker.ocr.OcrGuess
 import com.onewheel.ridetracker.ui.theme.LocalRideColors
 import java.text.SimpleDateFormat
@@ -17,6 +17,7 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddRideSheet(
+    boards: List<BoardEntity>,
     onDismiss: () -> Unit,
     onSave: (NewRideInput) -> Unit,
     prefill: OcrGuess? = null
@@ -24,7 +25,11 @@ fun AddRideSheet(
     val colors = LocalRideColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var board by remember { mutableStateOf(prefill?.board?.let { Board.valueOf(it) } ?: Board.XRV) }
+    var board by remember {
+        mutableStateOf(
+            boards.find { it.name == prefill?.board } ?: boards.firstOrNull()
+        )
+    }
     var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())) }
     var wh by remember { mutableStateOf(prefill?.whUsed?.toString() ?: "") }
     var miles by remember { mutableStateOf(prefill?.miles?.toString() ?: "") }
@@ -37,12 +42,13 @@ fun AddRideSheet(
 
     val whD = wh.toDoubleOrNull()
     val milesD = miles.toDoubleOrNull()
-    val computed = if (whD != null && whD > 0 && milesD != null && milesD > 0) {
+    val computed = if (whD != null && whD > 0 && milesD != null && milesD > 0 && board != null) {
+        val cap = board!!.capacityWh
         val whMi = whD / milesD
-        val range = board.capacityWh / whMi
-        val pct = whD / board.capacityWh * 100
+        val range = cap / whMi
+        val pct = whD / cap * 100
         "%.2f Wh/mi · %.1f mi estimated range · %.1f%% of pack used".format(whMi, range, pct)
-    } else "Wh/mi and estimated range appear once Wh used and miles are set."
+    } else "Wh/mi and estimated range appear once a board, Wh used, and miles are set."
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = colors.surface) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
@@ -65,9 +71,13 @@ fun AddRideSheet(
 
             Text("Board", style = MaterialTheme.typography.labelSmall, color = colors.textFaint)
             Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Board.values().forEach { b ->
-                    FilterChip(label = "${b.label} — ${b.capacityWh.toInt()} Wh", selected = board == b, onClick = { board = b })
+            if (boards.isEmpty()) {
+                Text("No boards set up yet — add one in Manage Boards first.", color = colors.bad, style = MaterialTheme.typography.bodySmall)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    boards.forEach { b ->
+                        FilterChip(label = "${b.name} — ${b.capacityWh.toInt()} Wh", selected = board?.name == b.name, onClick = { board = b })
+                    }
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -139,6 +149,11 @@ fun AddRideSheet(
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
                     val tempI = temp.toIntOrNull()
+                    val selectedBoard = board
+                    if (selectedBoard == null) {
+                        error = "Add a board in Manage Boards first."
+                        return@Button
+                    }
                     if (whD == null || whD <= 0 || milesD == null || milesD <= 0 ||
                         avg.toDoubleOrNull() == null || max.toDoubleOrNull() == null || tempI == null
                     ) {
@@ -147,7 +162,8 @@ fun AddRideSheet(
                     }
                     onSave(
                         NewRideInput(
-                            board = board.name,
+                            board = selectedBoard.name,
+                            capacityWh = selectedBoard.capacityWh,
                             date = date,
                             whUsed = whD,
                             miles = milesD,

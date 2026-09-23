@@ -3,6 +3,8 @@ package com.onewheel.ridetracker
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.onewheel.ridetracker.data.BoardEntity
+import com.onewheel.ridetracker.data.BoardRepository
 import com.onewheel.ridetracker.data.Ride
 import com.onewheel.ridetracker.data.RideDatabase
 import com.onewheel.ridetracker.data.RideJsonImport
@@ -13,6 +15,7 @@ import java.util.UUID
 
 data class NewRideInput(
     val board: String,
+    val capacityWh: Double,
     val date: String,
     val whUsed: Double,
     val miles: Double,
@@ -25,7 +28,9 @@ data class NewRideInput(
 
 class RideViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repo = RideRepository(RideDatabase.get(application).rideDao())
+    private val db = RideDatabase.get(application)
+    private val repo = RideRepository(db.rideDao())
+    private val boardRepo = BoardRepository(db.boardDao())
 
     private val _boardFilter = MutableStateFlow<String?>(null) // null = all
     val boardFilter: StateFlow<String?> = _boardFilter.asStateFlow()
@@ -39,6 +44,22 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearImportMessage() { _importMessage.value = null }
 
+    // One-shot status message for board save/delete problems (e.g. "can't delete, has rides").
+    private val _boardMessage = MutableStateFlow<String?>(null)
+    val boardMessage: StateFlow<String?> = _boardMessage.asStateFlow()
+
+    fun clearBoardMessage() { _boardMessage.value = null }
+
+    private val _boardsLoaded = MutableStateFlow(false)
+
+    val boards: StateFlow<List<BoardEntity>> = boardRepo.boards
+        .onEach { _boardsLoaded.value = true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** True once the first read from the boards table has completed — avoids flashing the
+     * first-run setup screen for a split second before real (non-empty) data arrives. */
+    val boardsLoaded: StateFlow<Boolean> = _boardsLoaded.asStateFlow()
+
     val allRides: StateFlow<List<Ride>> = repo.rides
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -47,16 +68,12 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
         filtered.sortedWith(compareByDescending<Ride> { it.date }.thenByDescending { it.session })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    init {
-        viewModelScope.launch { repo.seedIfEmpty() }
-    }
-
     fun setBoardFilter(board: String?) { _boardFilter.value = board }
 
     fun toggleTrendlines() { _showTrendlines.value = !_showTrendlines.value }
 
     fun addRide(input: NewRideInput) {
-        val pct = input.whUsed / com.onewheel.ridetracker.data.Board.valueOf(input.board).capacityWh * 100
+        val pct = if (input.capacityWh > 0) input.whUsed / input.capacityWh * 100 else 0.0
         val ride = Ride(
             id = "${input.board.lowercase()}-${input.date}-${UUID.randomUUID().toString().take(8)}",
             board = input.board,
@@ -81,8 +98,9 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     /** Parses a JSON file's text and imports whatever valid ride records it contains. */
     fun importRidesFromJson(jsonText: String) {
         viewModelScope.launch {
+            val capacities = boards.value.associate { it.name to it.capacityWh }
             val (rides, errors) = try {
-                RideJsonImport.parse(jsonText)
+                RideJsonImport.parse(jsonText, capacities)
             } catch (e: Exception) {
                 _importMessage.value = "Couldn't read that file: ${e.message ?: "invalid JSON"}"
                 return@launch
@@ -103,6 +121,22 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
                 append("Imported $inserted ride${if (inserted == 1) "" else "s"}.")
                 if (skipped > 0) append(" Skipped $skipped already-imported.")
                 if (errors.isNotEmpty()) append(" ${errors.size} entr${if (errors.size == 1) "y" else "ies"} couldn't be read.")
+            }
+        }
+    }
+
+    /** Add or update (by name) a board. */
+    fun saveBoard(board: BoardEntity) {
+        viewModelScope.launch { boardRepo.save(board) }
+    }
+
+    /** No-ops and reports a message if this board still has rides logged against it. */
+    fun deleteBoard(name: String) {
+        viewModelScope.launch {
+            val ok = boardRepo.delete(name)
+            if (!ok) {
+                val count = boardRepo.rideCountForBoard(name)
+                _boardMessage.value = "Can't delete \"$name\" — it still has $count ride${if (count == 1) "" else "s"} logged. Delete those rides first."
             }
         }
     }
