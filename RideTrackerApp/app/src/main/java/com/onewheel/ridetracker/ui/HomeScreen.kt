@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.onewheel.ridetracker.RideViewModel
 import com.onewheel.ridetracker.data.BoardEntity
+import com.onewheel.ridetracker.data.RideJsonExport
 import com.onewheel.ridetracker.ocr.OcrGuess
 import com.onewheel.ridetracker.ocr.RideTextParser
 import com.onewheel.ridetracker.ocr.recognizeText
@@ -107,6 +108,20 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
         }
     }
 
+    val jsonExporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            val json = RideJsonExport.toJson(allRides, boards)
+            context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                ?: throw IllegalStateException("Could not open that location for writing.")
+            Toast.makeText(context, "Exported ${allRides.size} rides.", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(context, "Couldn't export: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -174,11 +189,23 @@ fun HomeScreen(vm: RideViewModel = viewModel()) {
             }
         }
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = { showAskClaude = true },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("🤖 Ask Claude")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    val today = java.time.LocalDate.now().toString() // yyyy-MM-dd
+                    jsonExporter.launch("ride-telemetry-backup-$today.json")
+                },
+                enabled = allRides.isNotEmpty(),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("⬆ Export backup")
+            }
+            OutlinedButton(
+                onClick = { showAskClaude = true },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("🤖 Ask Claude")
+            }
         }
 
         Spacer(Modifier.height(16.dp))
