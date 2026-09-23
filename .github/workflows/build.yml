@@ -36,6 +36,18 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
+      # Reuse the same debug signing key across every CI run instead of letting
+      # Gradle generate a new random one each time. Without this, every build
+      # is signed differently, Android refuses to install over the old app,
+      # and installing "over" it actually means uninstall-then-install --
+      # which wipes the app's local database. This makes future installs
+      # go in-place, preserving your ride/board data across updates.
+      - name: Restore or persist the debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
