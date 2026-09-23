@@ -5,6 +5,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch: {}
 
+defaults:
+  run:
+    working-directory: RideTrackerApp
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -44,4 +48,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ride-telemetry-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: RideTrackerApp/app/build/outputs/apk/debug/app-debug.apk
